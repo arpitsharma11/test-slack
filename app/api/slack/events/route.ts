@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import crypto from 'crypto-js';
 import eventEmitter from '../../../lib/event-emitter'; // Adjust path if needed
 
