@@ -1,7 +1,7 @@
 // In any page, e.g., /pages/index.tsx
 
 import type { NextPage } from 'next';
-import { Component } from 'react';
+import Component from './Component';
 
 const ChatPage: NextPage = () => {
   return (
