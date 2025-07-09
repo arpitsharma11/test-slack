@@ -27,8 +27,11 @@ export async function POST(request: NextRequest) {
     return new Response('Signature verification failed', { status: 403 });
   }
 
+  console.log("Signature verification Done!!!")
+
   // At this point, the request is verified. Parse the body.
   const body = JSON.parse(rawBody);
+  console.log("🚀 ~ POST ~ body:", body)
 
   // 2. Handle the one-time URL verification challenge from Slack
   if (body.type === 'url_verification') {
