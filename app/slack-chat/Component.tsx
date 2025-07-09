@@ -1,44 +1,68 @@
-"use client";
-
 // /pages/slack-chat.tsx
-
+"use client"
 import type { NextPage } from 'next';
 import { useEffect, useState } from 'react';
 
-// This is a placeholder for now. We will fetch real channels later.
-const DUMMY_CHANNELS = [
-  { id: 'C0949RER6Q4', name: 'general' }
-];
+// This type definition should match the one in our API route
+type Channel = {
+  id: string;
+  name: string;
+};
 
 const SlackChatPage: NextPage = () => {
-  // We will replace this with a real loading state later
-  const [isLoading, setIsLoading] = useState(true);
-
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  // This effect runs once when the component mounts
   useEffect(() => {
-    // Simulate fetching data after the page loads
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 1500);
+    const fetchChannels = async () => {
+      try {
+        // Call our own backend API route
+        const response = await fetch('/api/slack/channels');
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to fetch channels');
+        }
+        const data: Channel[] = await response.json();
+        setChannels(data);
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-    return () => clearTimeout(timer); // Cleanup timer on component unmount
-  }, []);
+    fetchChannels();
+  }, []); // Empty dependency array means this runs only once on mount
+
+  const renderChannelList = () => {
+    if (isLoading) {
+      return <p>Loading channels...</p>;
+    }
+    if (error) {
+      return <p style={{ color: 'red' }}>Error: {error}</p>;
+    }
+    if (channels.length === 0) {
+      return <p>No channels found.</p>;
+    }
+    return (
+      <ul>
+        {channels.map(channel => (
+          <li key={channel.id} style={{ listStyle: 'none', padding: '8px 0', cursor: 'pointer' }}>
+            # {channel.name}
+          </li>
+        ))}
+      </ul>
+    );
+  };
 
   return (
     <div style={{ display: 'flex', height: '100vh', fontFamily: 'sans-serif', color: '#333' }}>
       {/* Left Sidebar for Channels */}
       <aside style={{ width: '250px', backgroundColor: '#f8f8f8', borderRight: '1px solid #ddd', padding: '20px' }}>
         <h2 style={{ fontSize: '1.2rem', marginBottom: '20px' }}>Slack Channels</h2>
-        {isLoading ? (
-          <p>Loading channels...</p>
-        ) : (
-          <ul>
-            {DUMMY_CHANNELS.map(channel => (
-              <li key={channel.id} style={{ listStyle: 'none', padding: '8px 0', cursor: 'pointer' }}>
-                # {channel.name}
-              </li>
-            ))}
-          </ul>
-        )}
+        {renderChannelList()}
       </aside>
 
       {/* Main Chat Area */}
@@ -48,7 +72,7 @@ const SlackChatPage: NextPage = () => {
         </h1>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <p style={{ color: '#888', fontSize: '1.1rem' }}>
-            ✅ Authentication successful! Select a channel to view messages.
+            {channels.length > 0 ? 'Select a channel to get started.' : 'Awaiting channel list...'}
           </p>
         </div>
       </main>
