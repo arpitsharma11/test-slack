@@ -25,9 +25,8 @@ export async function GET(request: NextRequest) {
       console.log(`[SSE] Subscribing to channel: ${channel}`);
       eventEmitter.on(channel, messageListener);
 
-      // The `cancel` method is called when the client closes the connection.
-      // This is the perfect place to clean up our listener.
-      controller.signal.addEventListener('abort', () => {
+      // Listen for client disconnect using the request's signal
+      request.signal.addEventListener('abort', () => {
         console.log(`[SSE] Client disconnected. Unsubscribing from channel: ${channel}`);
         eventEmitter.removeListener(channel, messageListener);
         controller.close();
