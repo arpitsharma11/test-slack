@@ -1,10 +1,6 @@
 "use client";
 
 export default function ConnectSlackButton() {
-  const handleConnectSlack = () => {
-    console.log("Connect to Slack button clicked");
-  };
-
   return (
     <div>
       <a 
@@ -24,7 +20,6 @@ export default function ConnectSlackButton() {
           textDecoration: "none",
           width: "236px"
         }}
-        onClick={handleConnectSlack}
       >
         <svg 
           xmlns="http://www.w3.org/2000/svg" 
