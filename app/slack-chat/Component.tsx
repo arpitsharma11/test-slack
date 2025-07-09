@@ -1,24 +1,36 @@
-// /pages/slack-chat.tsx
 "use client"
+
 import type { NextPage } from 'next';
 import { useEffect, useState } from 'react';
 
-// This type definition should match the one in our API route
+// Define types directly in the component file
 type Channel = {
   id: string;
   name: string;
 };
 
+type Message = {
+  ts: string;
+  user: string;
+  text: string;
+};
+
 const SlackChatPage: NextPage = () => {
+  // State for channels
   const [channels, setChannels] = useState<Channel[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  
-  // This effect runs once when the component mounts
+  const [isLoadingChannels, setIsLoadingChannels] = useState<boolean>(true);
+  const [channelsError, setChannelsError] = useState<string | null>(null);
+
+  // NEW: State for messages
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
+  const [isLoadingMessages, setIsLoadingMessages] = useState<boolean>(false);
+  const [messagesError, setMessagesError] = useState<string | null>(null);
+
+  // Fetch channels on initial page load
   useEffect(() => {
     const fetchChannels = async () => {
       try {
-        // Call our own backend API route
         const response = await fetch('/api/slack/channels');
         if (!response.ok) {
           const errorData = await response.json();
@@ -27,34 +39,37 @@ const SlackChatPage: NextPage = () => {
         const data: Channel[] = await response.json();
         setChannels(data);
       } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-        setError(err.message);
+        setChannelsError(err.message);
       } finally {
-        setIsLoading(false);
+        setIsLoadingChannels(false);
       }
     };
-
     fetchChannels();
-  }, []); // Empty dependency array means this runs only once on mount
+  }, []);
 
-  const renderChannelList = () => {
-    if (isLoading) {
-      return <p>Loading channels...</p>;
+  // NEW: Handler to fetch messages when a channel is selected
+  const handleChannelSelect = async (channelId: string) => {
+    const channel = channels.find(c => c.id === channelId);
+    if (!channel || channel.id === selectedChannel?.id) return; // Don't refetch if already selected
+
+    setSelectedChannel(channel);
+    setIsLoadingMessages(true);
+    setMessages([]); // Clear old messages
+    setMessagesError(null);
+
+    try {
+      const response = await fetch(`/api/slack/history?channel=${channelId}`);
+      if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to fetch history');
+      }
+      const history: Message[] = await response.json();
+      setMessages(history);
+    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      setMessagesError(err.message);
+    } finally {
+      setIsLoadingMessages(false);
     }
-    if (error) {
-      return <p style={{ color: 'red' }}>Error: {error}</p>;
-    }
-    if (channels.length === 0) {
-      return <p>No channels found.</p>;
-    }
-    return (
-      <ul>
-        {channels.map(channel => (
-          <li key={channel.id} style={{ listStyle: 'none', padding: '8px 0', cursor: 'pointer' }}>
-            # {channel.name}
-          </li>
-        ))}
-      </ul>
-    );
   };
 
   return (
@@ -62,18 +77,56 @@ const SlackChatPage: NextPage = () => {
       {/* Left Sidebar for Channels */}
       <aside style={{ width: '250px', backgroundColor: '#f8f8f8', borderRight: '1px solid #ddd', padding: '20px' }}>
         <h2 style={{ fontSize: '1.2rem', marginBottom: '20px' }}>Slack Channels</h2>
-        {renderChannelList()}
+        {isLoadingChannels ? <p>Loading channels...</p> : null}
+        {channelsError ? <p style={{ color: 'red' }}>Error: {channelsError}</p> : null}
+        <ul style={{ padding: 0, margin: 0 }}>
+          {channels.map(channel => (
+            <li
+              key={channel.id}
+              onClick={() => handleChannelSelect(channel.id)}
+              style={{
+                listStyle: 'none',
+                padding: '8px',
+                cursor: 'pointer',
+                borderRadius: '4px',
+                fontWeight: channel.id === selectedChannel?.id ? 'bold' : 'normal',
+                backgroundColor: channel.id === selectedChannel?.id ? '#e0e0e0' : 'transparent'
+              }}
+            >
+              # {channel.name}
+            </li>
+          ))}
+        </ul>
       </aside>
 
       {/* Main Chat Area */}
       <main style={{ flex: 1, padding: '20px', display: 'flex', flexDirection: 'column' }}>
-        <h1 style={{ borderBottom: '1px solid #ddd', paddingBottom: '10px' }}>
-          Slack Integration
-        </h1>
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <p style={{ color: '#888', fontSize: '1.1rem' }}>
-            {channels.length > 0 ? 'Select a channel to get started.' : 'Awaiting channel list...'}
-          </p>
+        <header style={{ borderBottom: '1px solid #ddd', paddingBottom: '10px', marginBottom: '20px' }}>
+          <h1>{selectedChannel ? `# ${selectedChannel.name}` : 'Slack Integration'}</h1>
+        </header>
+
+        {/* NEW: Message display logic */}
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {!selectedChannel ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%'}}>
+              <p style={{ color: '#888', fontSize: '1.1rem' }}>Please select a channel to view messages.</p>
+            </div>
+          ) : isLoadingMessages ? (
+            <p>Loading messages...</p>
+          ) : messagesError ? (
+            <p style={{ color: 'red' }}>Error: {messagesError}</p>
+          ) : messages.length === 0 ? (
+            <p>No messages in this channel.</p>
+          ) : (
+            <div>
+              {messages.map(msg => (
+                <div key={msg.ts} style={{ marginBottom: '12px' }}>
+                  <strong style={{ display: 'block', fontSize: '0.9rem' }}>{msg.user}</strong>
+                  <p style={{ margin: '4px 0' }}>{msg.text}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </main>
     </div>
