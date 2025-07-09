@@ -7,6 +7,7 @@ export async function GET() {
     'chat:write',
     'channels:read',
     'groups:read',
+    'groups:history'
   ].join(',');
 
   const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL}/api/slack/callback`;
