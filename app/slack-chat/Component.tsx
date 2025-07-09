@@ -26,7 +26,7 @@ const SlackChatPage: NextPage = () => {
         }
         const data: Channel[] = await response.json();
         setChannels(data);
-      } catch (err: any) {
+      } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
         setError(err.message);
       } finally {
         setIsLoading(false);
