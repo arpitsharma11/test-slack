@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import eventEmitter from '../../lib/event-emitter'; // Adjust path if needed
+import eventEmitter from '../../../lib/event-emitter'; // Adjust path if needed
 
 export async function GET(request: NextRequest) {
   const channel = request.nextUrl.searchParams.get('channel');
