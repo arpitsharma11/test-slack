@@ -1,9 +1,9 @@
 "use client";
 
 export default function ConnectSlackButton() {
-  const handleConnectSlack = () => {
-    console.log("Connect to Slack button clicked");
-  };
+  // const handleConnectSlack = () => {
+  //   console.log("Connect to Slack button clicked");
+  // };
 
   return (
     <div>
