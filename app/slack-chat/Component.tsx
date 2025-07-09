@@ -1,4 +1,4 @@
-// /pages/slack-chat.tsx
+"use client"
 
 import type { NextPage } from 'next';
 import { useEffect, useState, FormEvent } from 'react';
