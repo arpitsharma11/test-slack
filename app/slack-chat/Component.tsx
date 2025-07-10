@@ -4,68 +4,12 @@
 import type { NextPage } from 'next';
 import { useEffect, useState, FormEvent, useRef } from 'react';
 
-// Define our data shapes
+// Define our data shapes (User type is no longer needed)
 type Channel = { id: string; name: string };
 type Message = { ts: string; user: string; text: string };
-type User = { id: string; name: string; avatar: string };
-
-// This new component is responsible for rendering a single message.
-// It fetches the user info for its message and displays it.
-const MessageItem = ({ message, usersCache, setUsersCache }: {
-  message: Message;
-  usersCache: Record<string, User>;
-  setUsersCache: React.Dispatch<React.SetStateAction<Record<string, User>>>;
-}) => {
-  const [user, setUser] = useState<User | null>(null);
-
-  useEffect(() => {
-    const fetchUser = async () => {
-      // Check client-side cache first
-      if (usersCache[message.user]) {
-        setUser(usersCache[message.user]);
-        return;
-      }
-      // If not in cache, fetch from our API
-      try {
-        const response = await fetch(`/api/slack/user?userId=${message.user}`);
-        if (response.ok) {
-          const userData: User = await response.json();
-          setUsersCache(prev => ({ ...prev, [message.user]: userData }));
-          setUser(userData);
-        } else {
-          // Handle cases where user lookup might fail
-          setUser({ id: message.user, name: 'Unknown User', avatar: '' });
-        }
-      } catch (error) {
-        console.error("Failed to fetch user", error);
-        setUser({ id: message.user, name: 'Unknown User', avatar: '' });
-      }
-    };
-    fetchUser();
-  }, [message.user, usersCache, setUsersCache]);
-
-  return (
-    <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
-      <img 
-        src={user?.avatar || 'https://via.placeholder.com/40'} // Fallback avatar
-        alt={user?.name || 'Avatar'}
-        width={40}
-        height={40}
-        style={{ borderRadius: '5px' }}
-      />
-      <div>
-        <strong style={{ display: 'block', fontSize: '0.9rem' }}>
-          {user ? user.name : 'Loading...'}
-        </strong>
-        <p style={{ margin: '4px 0' }}>{message.text}</p>
-      </div>
-    </div>
-  );
-};
-
 
 const SlackChatPage: NextPage = () => {
-  // State variables
+  // State variables (usersCache is removed)
   const [channels, setChannels] = useState<Channel[]>([]);
   const [isLoadingChannels, setIsLoadingChannels] = useState<boolean>(true);
   const [channelsError, setChannelsError] = useState<string | null>(null);
@@ -75,9 +19,6 @@ const SlackChatPage: NextPage = () => {
   const [messagesError, setMessagesError] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState<string>('');
   const [isSending, setIsSending] = useState<boolean>(false);
-
-  // Client-side cache for user objects
-  const [usersCache, setUsersCache] = useState<Record<string, User>>({});
 
   // Refs for real-time connection and auto-scrolling
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -178,6 +119,7 @@ const SlackChatPage: NextPage = () => {
         </ul>
       </aside>
 
+      {/* UI CHANGE: Applying dark grey theme to the main chat area */}
       <main style={{ flex: 1, padding: '20px', display: 'flex', flexDirection: 'column', maxHeight: '100vh', backgroundColor: '#282828' }}>
         <header style={{ borderBottom: '1px solid #444', paddingBottom: '10px', marginBottom: '20px', flexShrink: 0 }}>
           <h1>{selectedChannel ? `# ${selectedChannel.name}` : 'Slack Integration'}</h1>
@@ -187,10 +129,17 @@ const SlackChatPage: NextPage = () => {
           {isLoadingMessages && <p>Loading messages...</p>}
           {messagesError && <p style={{ color: 'red' }}>Error: {messagesError}</p>}
           
+          {/* LOGIC REVERTED: Directly rendering messages with user ID */}
           {messages.map(msg => (
-            <MessageItem key={msg.ts} message={msg} usersCache={usersCache} setUsersCache={setUsersCache} />
+            <div key={msg.ts} style={{ marginBottom: '12px' }}>
+              <strong style={{ display: 'block', fontSize: '0.9rem', color: '#888' }}>
+                {msg.user}
+              </strong>
+              <p style={{ margin: '4px 0' }}>{msg.text}</p>
+            </div>
           ))}
 
+          {/* This empty div is the target for auto-scrolling */}
           <div ref={messagesEndRef} />
         </div>
 
