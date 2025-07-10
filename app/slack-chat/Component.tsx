@@ -4,163 +4,242 @@
 import type { NextPage } from 'next';
 import { useEffect, useState, FormEvent, useRef } from 'react';
 
-// Define our data shapes (User type is no longer needed)
-type Channel = { id: string; name: string };
+// Define the shape of a message
 type Message = { ts: string; user: string; text: string };
 
+// --- Configuration ---
+// The specific Slack channel to connect to.
+const CHANNEL_ID = 'C095VAJLKS4';
+
+// A user-friendly name for display purposes.
+const CHANNEL_NAME = 'Approvals';
+// --------------------
+
+
 const SlackChatPage: NextPage = () => {
-  // State variables (usersCache is removed)
-  const [channels, setChannels] = useState<Channel[]>([]);
-  const [isLoadingChannels, setIsLoadingChannels] = useState<boolean>(true);
-  const [channelsError, setChannelsError] = useState<string | null>(null);
+  // --- State Management ---
   const [messages, setMessages] = useState<Message[]>([]);
-  const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
-  const [isLoadingMessages, setIsLoadingMessages] = useState<boolean>(false);
-  const [messagesError, setMessagesError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState<string>('');
   const [isSending, setIsSending] = useState<boolean>(false);
 
-  // Refs for real-time connection and auto-scrolling
+  // --- Refs ---
   const eventSourceRef = useRef<EventSource | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  // Auto-scroll to the bottom when new messages are added
+  // --- Effects ---
+  // Effect to auto-scroll to the latest message
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Fetch channels on initial load
+  // Effect to fetch initial history and set up the real-time connection on mount
   useEffect(() => {
-    const fetchChannels = async () => {
+    // 1. Fetch initial message history
+    const fetchHistory = async () => {
+      setIsLoading(true);
+      setError(null);
       try {
-        const response = await fetch('/api/slack/channels');
-        if (!response.ok) throw new Error('Failed to fetch channels');
-        const data: Channel[] = await response.json();
-        setChannels(data);
+        const response = await fetch(`/api/slack/history?channel=${CHANNEL_ID}`);
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to fetch chat history.');
+        }
+        const history: Message[] = await response.json();
+        setMessages(history.filter(msg => !msg.text.includes('has joined the channel')));
       } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-        setChannelsError(err.message);
+        setError(err.message);
       } finally {
-        setIsLoadingChannels(false);
+        setIsLoading(false);
       }
     };
-    fetchChannels();
-  }, []);
+    fetchHistory();
 
-  // Manage SSE connection
-  useEffect(() => {
-    if (eventSourceRef.current) eventSourceRef.current.close();
-    if (selectedChannel) {
-      const eventSource = new EventSource(`/api/slack/stream?channel=${selectedChannel.id}`);
-      eventSourceRef.current = eventSource;
-      eventSource.onmessage = (event) => {
-        const newMessage: Message = JSON.parse(event.data);
+    // 2. Set up Server-Sent Events (SSE) connection for real-time updates
+    const eventSource = new EventSource(`/api/slack/stream?channel=${CHANNEL_ID}`);
+    eventSourceRef.current = eventSource;
+
+    eventSource.onmessage = (event) => {
+      const newMessage: Message = JSON.parse(event.data);
+      // Filter out 'user has joined' messages in real-time
+      if (newMessage.text && !newMessage.text.includes('has joined the channel')) {
         setMessages(prev => prev.some(msg => msg.ts === newMessage.ts) ? prev : [...prev, newMessage]);
-      };
-      eventSource.onerror = (err) => { console.error('EventSource failed:', err); eventSource.close(); };
-    }
-    return () => { if (eventSourceRef.current) eventSourceRef.current.close(); };
-  }, [selectedChannel]);
+      }
+    };
 
-  // Fetch history when a channel is selected
-  const handleChannelSelect = async (channelId: string) => {
-    const channel = channels.find(c => c.id === channelId);
-    if (!channel || channel.id === selectedChannel?.id) return;
-    setSelectedChannel(channel);
-    setIsLoadingMessages(true);
-    setMessages([]);
-    setMessagesError(null);
-    try {
-      const response = await fetch(`/api/slack/history?channel=${channelId}`);
-      if (!response.ok) throw new Error('Failed to fetch history');
-      const history: Message[] = await response.json();
-      setMessages(history);
-    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-      setMessagesError(err.message);
-    } finally {
-      setIsLoadingMessages(false);
-    }
-  };
+    eventSource.onerror = (err) => {
+      console.error('EventSource failed:', err);
+      setError('Connection to server lost. Please refresh.');
+      eventSource.close();
+    };
 
-  // Send a new message
+    // 3. Cleanup function to close the connection when the component unmounts
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+    };
+  }, []); // The empty dependency array ensures this runs only once on mount
+
+  // --- Handlers ---
   const handleSendMessage = async (e: FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !selectedChannel || isSending) return;
+    if (!newMessage.trim() || isSending) return;
     setIsSending(true);
     try {
       const response = await fetch('/api/slack/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channel: selectedChannel.id, text: newMessage }),
+        body: JSON.stringify({ channel: CHANNEL_ID, text: newMessage }),
       });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to send message');
       }
-      setNewMessage('');
-    } catch (error: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-      alert(`Error sending message: ${error.message}`);
+      setNewMessage(''); // Clear input on success
+    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      setError(`Error: ${err.message}`);
     } finally {
       setIsSending(false);
     }
   };
 
+  // --- Render Logic ---
+  const renderContent = () => {
+    if (isLoading) {
+      return <div style={centerStyle}>Loading Conversation...</div>;
+    }
+    if (error) {
+      return <div style={{ ...centerStyle, color: '#ff6b6b' }}>Error: {error}</div>;
+    }
+    return (
+      <>
+        {messages.map(msg => (
+          <div key={msg.ts} style={messageBubbleStyle}>
+            <strong style={userIdStyle}>{msg.user}</strong>
+            <p style={messageTextStyle}>{msg.text}</p>
+          </div>
+        ))}
+        <div ref={messagesEndRef} />
+      </>
+    );
+  };
+  
   return (
-    <div style={{ display: 'flex', height: '100vh', fontFamily: 'sans-serif', color: '#f0f0f0' }}>
-      <aside style={{ width: '250px', backgroundColor: '#f8f8f8', borderRight: '1px solid #ddd', padding: '20px', color: '#333' }}>
-        <h2 style={{ fontSize: '1.2rem', marginBottom: '20px' }}>Slack Channels</h2>
-        {isLoadingChannels && <p>Loading channels...</p>}
-        {channelsError && <p style={{ color: 'red' }}>Error: {channelsError}</p>}
-        <ul style={{ padding: 0, margin: 0 }}>
-          {channels.map(channel => (
-            <li key={channel.id} onClick={() => handleChannelSelect(channel.id)} style={{ listStyle: 'none', padding: '8px', cursor: 'pointer', borderRadius: '4px', fontWeight: channel.id === selectedChannel?.id ? 'bold' : 'normal', backgroundColor: channel.id === selectedChannel?.id ? '#e0e0e0' : 'transparent' }}>
-              # {channel.name}
-            </li>
-          ))}
-        </ul>
-      </aside>
+    <main style={mainContainerStyle}>
+      <header style={headerStyle}>
+        <h1 style={{ margin: 0, fontSize: '1.5rem' }}>Quote Approval Flow</h1>
+        <p style={{ margin: '4px 0 0', color: '#999' }}>
+          #{CHANNEL_NAME}
+        </p>
+      </header>
 
-      {/* UI CHANGE: Applying dark grey theme to the main chat area */}
-      <main style={{ flex: 1, padding: '20px', display: 'flex', flexDirection: 'column', maxHeight: '100vh', backgroundColor: '#282828' }}>
-        <header style={{ borderBottom: '1px solid #444', paddingBottom: '10px', marginBottom: '20px', flexShrink: 0 }}>
-          <h1>{selectedChannel ? `# ${selectedChannel.name}` : 'Slack Integration'}</h1>
-        </header>
+      <div style={chatWindowStyle}>
+        {renderContent()}
+      </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', marginBottom: '20px' }}>
-          {isLoadingMessages && <p>Loading messages...</p>}
-          {messagesError && <p style={{ color: 'red' }}>Error: {messagesError}</p>}
-          
-          {/* LOGIC REVERTED: Directly rendering messages with user ID */}
-          {messages.map(msg => (
-            <div key={msg.ts} style={{ marginBottom: '12px' }}>
-              <strong style={{ display: 'block', fontSize: '0.9rem', color: '#888' }}>
-                {msg.user}
-              </strong>
-              <p style={{ margin: '4px 0' }}>{msg.text}</p>
-            </div>
-          ))}
-
-          {/* This empty div is the target for auto-scrolling */}
-          <div ref={messagesEndRef} />
-        </div>
-
-        {selectedChannel && (
-          <form onSubmit={handleSendMessage} style={{ display: 'flex', gap: '10px', flexShrink: 0 }}>
-            <input
-              type="text"
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              placeholder={`Message #${selectedChannel.name}`}
-              disabled={isSending}
-              style={{ flex: 1, padding: '10px', borderRadius: '5px', border: '1px solid #555', backgroundColor: '#3c3c3c', color: '#f0f0f0' }}
-            />
-            <button type="submit" disabled={isSending || !newMessage.trim()} style={{ padding: '10px 20px', borderRadius: '5px', border: 'none', backgroundColor: '#007a5a', color: 'white', cursor: 'pointer' }}>
-              {isSending ? 'Sending...' : 'Send'}
-            </button>
-          </form>
-        )}
-      </main>
-    </div>
+      <div style={formContainerStyle}>
+        <form onSubmit={handleSendMessage} style={{ display: 'flex', gap: '10px' }}>
+          <input
+            type="text"
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            placeholder="Type your message..."
+            disabled={isSending}
+            style={inputStyle}
+          />
+          <button type="submit" disabled={isSending || !newMessage.trim()} style={sendButtonStyle}>
+            {isSending ? 'Sending...' : 'Send'}
+          </button>
+        </form>
+      </div>
+    </main>
   );
+};
+
+
+// --- Inline Styles for a Beautiful UI ---
+
+const mainContainerStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  height: '100vh',
+  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+  color: '#e0e0e0',
+  backgroundColor: '#1c1c1e' // Dark grey background
+};
+
+const headerStyle: React.CSSProperties = {
+  padding: '16px 24px',
+  borderBottom: '1px solid #3a3a3c',
+  flexShrink: 0,
+  backgroundColor: '#2c2c2e',
+};
+
+const chatWindowStyle: React.CSSProperties = {
+  flex: 1,
+  overflowY: 'auto',
+  padding: '24px',
+};
+
+const formContainerStyle: React.CSSProperties = {
+  padding: '16px 24px',
+  borderTop: '1px solid #3a3a3c',
+  backgroundColor: '#2c2c2e',
+  flexShrink: 0
+};
+
+const inputStyle: React.CSSProperties = {
+  flex: 1,
+  padding: '12px 16px',
+  borderRadius: '8px',
+  border: '1px solid #4a4a4c',
+  backgroundColor: '#3a3a3c',
+  color: '#e0e0e0',
+  fontSize: '1rem',
+};
+
+const sendButtonStyle: React.CSSProperties = {
+  padding: '12px 24px',
+  borderRadius: '8px',
+  border: 'none',
+  backgroundColor: '#0a84ff', // A modern blue
+  color: 'white',
+  fontWeight: 600,
+  cursor: 'pointer',
+  fontSize: '1rem',
+};
+
+const messageBubbleStyle: React.CSSProperties = {
+  marginBottom: '16px',
+  padding: '12px 16px',
+  backgroundColor: '#2c2c2e',
+  borderRadius: '12px',
+  maxWidth: '75%',
+  wordWrap: 'break-word',
+};
+
+const userIdStyle: React.CSSProperties = {
+  display: 'block',
+  fontSize: '0.8rem',
+  color: '#8e8e93', // Lighter grey for user ID
+  marginBottom: '4px',
+};
+
+const messageTextStyle: React.CSSProperties = {
+  margin: 0,
+  fontSize: '1rem',
+  lineHeight: '1.4',
+};
+
+const centerStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  height: '100%',
+  color: '#8e8e93',
+  fontSize: '1.1rem',
 };
 
 export default SlackChatPage;
