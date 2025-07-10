@@ -76,7 +76,7 @@ const SlackChatPage: NextPage = () => {
   const [newMessage, setNewMessage] = useState<string>('');
   const [isSending, setIsSending] = useState<boolean>(false);
 
-  // NEW: Client-side cache for user objects to prevent re-fetching
+  // Client-side cache for user objects
   const [usersCache, setUsersCache] = useState<Record<string, User>>({});
 
   // Refs for real-time connection and auto-scrolling
@@ -88,20 +88,25 @@ const SlackChatPage: NextPage = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // All other useEffects and handlers remain the same...
-  useEffect(() => { /* Fetch channels */
+  // Fetch channels on initial load
+  useEffect(() => {
     const fetchChannels = async () => {
       try {
         const response = await fetch('/api/slack/channels');
         if (!response.ok) throw new Error('Failed to fetch channels');
         const data: Channel[] = await response.json();
         setChannels(data);
-      } catch (err: any) { setChannelsError(err.message); } finally { setIsLoadingChannels(false); }
+      } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+        setChannelsError(err.message);
+      } finally {
+        setIsLoadingChannels(false);
+      }
     };
     fetchChannels();
   }, []);
 
-  useEffect(() => { /* Manage SSE connection */
+  // Manage SSE connection
+  useEffect(() => {
     if (eventSourceRef.current) eventSourceRef.current.close();
     if (selectedChannel) {
       const eventSource = new EventSource(`/api/slack/stream?channel=${selectedChannel.id}`);
@@ -115,7 +120,8 @@ const SlackChatPage: NextPage = () => {
     return () => { if (eventSourceRef.current) eventSourceRef.current.close(); };
   }, [selectedChannel]);
 
-  const handleChannelSelect = async (channelId: string) => { /* Fetch history */
+  // Fetch history when a channel is selected
+  const handleChannelSelect = async (channelId: string) => {
     const channel = channels.find(c => c.id === channelId);
     if (!channel || channel.id === selectedChannel?.id) return;
     setSelectedChannel(channel);
@@ -127,23 +133,34 @@ const SlackChatPage: NextPage = () => {
       if (!response.ok) throw new Error('Failed to fetch history');
       const history: Message[] = await response.json();
       setMessages(history);
-    } catch (err: any) { setMessagesError(err.message); } finally { setIsLoadingMessages(false); }
+    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      setMessagesError(err.message);
+    } finally {
+      setIsLoadingMessages(false);
+    }
   };
 
-  const handleSendMessage = async (e: FormEvent) => { /* Send message */
+  // Send a new message
+  const handleSendMessage = async (e: FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedChannel || isSending) return;
     setIsSending(true);
     try {
       const response = await fetch('/api/slack/message', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ channel: selectedChannel.id, text: newMessage }),
       });
       if (!response.ok) {
-        const errorData = await response.json(); throw new Error(errorData.error || 'Failed to send message');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send message');
       }
       setNewMessage('');
-    } catch (error: any) { alert(`Error sending message: ${error.message}`); } finally { setIsSending(false); }
+    } catch (error: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      alert(`Error sending message: ${error.message}`);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   return (
@@ -161,7 +178,6 @@ const SlackChatPage: NextPage = () => {
         </ul>
       </aside>
 
-      {/* UI CHANGE: Added dark grey background to the main chat area */}
       <main style={{ flex: 1, padding: '20px', display: 'flex', flexDirection: 'column', maxHeight: '100vh', backgroundColor: '#282828' }}>
         <header style={{ borderBottom: '1px solid #444', paddingBottom: '10px', marginBottom: '20px', flexShrink: 0 }}>
           <h1>{selectedChannel ? `# ${selectedChannel.name}` : 'Slack Integration'}</h1>
@@ -171,12 +187,10 @@ const SlackChatPage: NextPage = () => {
           {isLoadingMessages && <p>Loading messages...</p>}
           {messagesError && <p style={{ color: 'red' }}>Error: {messagesError}</p>}
           
-          {/* RENDER CHANGE: Use the new MessageItem component */}
           {messages.map(msg => (
             <MessageItem key={msg.ts} message={msg} usersCache={usersCache} setUsersCache={setUsersCache} />
           ))}
 
-          {/* This empty div is the target for auto-scrolling */}
           <div ref={messagesEndRef} />
         </div>
 
